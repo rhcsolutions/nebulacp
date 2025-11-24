@@ -137,8 +137,9 @@ if [[ $OS == "debian" ]]; then
     export DEBIAN_FRONTEND=noninteractive
     apt update -qq
     apt upgrade -y -qq
+    # software-properties-common not available on Debian 13+, only needed for add-apt-repository
     apt install -y -qq curl wget gnupg2 lsb-release ca-certificates apt-transport-https \
-                   software-properties-common nftables quota xfsprogs git sudo \
+                   nftables quota xfsprogs git sudo \
                    unzip tar cron build-essential python3 python3-pip python3-venv \
                    ufw fail2ban
     log_success "System updated and core packages installed"
