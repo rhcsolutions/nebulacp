@@ -132,7 +132,7 @@ else
 fi
 
 # 3. Install core dependencies
-step "Installing core system packages..."
+step "Updating system and installing core packages..."
 if [[ $OS == "debian" ]]; then
     export DEBIAN_FRONTEND=noninteractive
     apt update -qq
@@ -141,7 +141,7 @@ if [[ $OS == "debian" ]]; then
                    software-properties-common nftables quota xfsprogs git sudo \
                    unzip tar cron build-essential python3 python3-pip python3-venv \
                    ufw fail2ban
-    log_success "Core packages installed"
+    log_success "System updated and core packages installed"
     track_install "System Tools: curl, wget, git, build-essential, python3"
 elif [[ $OS == "rhel" ]]; then
     dnf update -y -q
@@ -149,7 +149,7 @@ elif [[ $OS == "rhel" ]]; then
     dnf install -y -q curl wget gnupg2 git sudo unzip tar cronie nftables quota \
                    policycoreutils-python-utils gcc gcc-c++ make python3 python3-pip \
                    firewalld fail2ban
-    log_success "Core packages installed"
+    log_success "System updated and core packages installed"
     track_install "System Tools: curl, wget, git, gcc, gcc-c++, python3"
 fi
 
@@ -186,28 +186,30 @@ else
 fi
 log_success "Caddy repository added"
 
-# 5. Install everything
-step "Installing Node.js, PostgreSQL 17, Redis, Caddy, Nginx..."
+# 5. Install/Update everything
+step "Installing/Updating Node.js, PostgreSQL 17, Redis, Caddy, Nginx..."
 if [[ $OS == "debian" ]]; then
     apt update -qq
+    apt install -y -qq --only-upgrade nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx 2>/dev/null || \
     apt install -y -qq nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx
-    log_success "Main packages installed"
+    log_success "Main packages installed/updated to latest versions"
     track_install "Node.js: $(node --version 2>/dev/null || echo 'v22.x')"
     track_install "PostgreSQL: 17"
     track_install "Redis: $(redis-server --version 2>/dev/null | awk '{print $3}' || echo '7.x')"
-    track_install "Caddy: 2.8+"
+    track_install "Caddy: $(caddy version 2>/dev/null | head -n1 | awk '{print $1}' || echo '2.8+')"
     track_install "Nginx: $(nginx -v 2>&1 | awk -F'/' '{print $2}' || echo '1.x')"
 else
+    dnf upgrade -y -q nodejs postgresql17-server postgresql17-contrib redis caddy nginx 2>/dev/null || \
     dnf install -y -q nodejs postgresql17-server postgresql17-contrib redis caddy nginx
     # Initialize PostgreSQL on RHEL
     if [ ! -d "/var/lib/pgsql/17/data/base" ]; then
         /usr/pgsql-17/bin/postgresql-17-setup initdb
     fi
-    log_success "Main packages installed"
+    log_success "Main packages installed/updated to latest versions"
     track_install "Node.js: $(node --version 2>/dev/null || echo 'v22.x')"
     track_install "PostgreSQL: 17"
     track_install "Redis: $(redis-server --version 2>/dev/null | awk '{print $3}' || echo '7.x')"
-    track_install "Caddy: 2.8+"
+    track_install "Caddy: $(caddy version 2>/dev/null | head -n1 | awk '{print $1}' || echo '2.8+')"
     track_install "Nginx: $(nginx -v 2>&1 | awk -F'/' '{print $2}' || echo '1.x')"
 fi
 
@@ -218,23 +220,25 @@ if [[ $NODE_VERSION == "none" ]]; then
     exit 1
 fi
 
-# 6. Install PM2 globally
-step "Installing PM2 process manager..."
-npm install -g pm2 --silent
+# 6. Install/Update PM2 globally
+step "Installing/Updating PM2 process manager..."
+npm install -g pm2@latest --silent
+pm2 update 2>/dev/null || true
 pm2 install pm2-logrotate --silent 2>/dev/null || true
-log_success "PM2 installed with log rotation"
+log_success "PM2 updated to latest version with log rotation"
 track_install "PM2: $(pm2 --version 2>/dev/null || echo 'latest')"
 
-# 7. Install rclone
-step "Installing rclone for backup management..."
+# 7. Install/Update rclone
+step "Installing/Updating rclone for backup management..."
 curl -s https://rclone.org/install.sh | bash > /dev/null 2>&1
 log_success "rclone installed"
+log_success "rclone updated to latest version"
 track_install "rclone: $(rclone version 2>/dev/null | head -n1 | awk '{print $2}' || echo 'latest')"
 
-# 8. Install Ollama (optional AI feature)
-step "Installing Ollama for AI text generation..."
+# 8. Install/Update Ollama (optional AI feature)
+step "Installing/Updating Ollama for AI text generation..."
 if curl -fsSL https://ollama.com/install.sh | sh > /dev/null 2>&1; then
-    log_success "Ollama installed"
+    log_success "Ollama installed/updated to latest version"
     track_install "Ollama: latest (AI text generation)"
 else
     log_warning "Ollama installation failed (optional feature)"
@@ -263,18 +267,37 @@ chmod 755 /opt/nebulacp
 log_success "Directory structure created"
 
 # 11. Clone NebulaCP source code
-step "Downloading NebulaCP source code..."
+step "Downloading latest NebulaCP source code..."
 cd /tmp
 if [ -d "/tmp/nebulacp" ]; then
     rm -rf /tmp/nebulacp
 fi
 
+# Check if installation already exists
+if [ -d "/opt/nebulacp/apps" ]; then
+    log_info "Existing installation detected - updating to latest version..."
+    UPDATING=true
+    
+    # Backup existing installation
+    BACKUP_DIR="/opt/nebulacp-backup-$(date +%Y%m%d-%H%M%S)"
+    log_info "Creating backup at $BACKUP_DIR..."
+    cp -r /opt/nebulacp "$BACKUP_DIR"
+    log_success "Backup created"
+else
+    UPDATING=false
+fi
+
 # Clone from GitHub (update with actual repo URL when available)
 if git clone https://github.com/rhcsolutions/nebulacp.git /tmp/nebulacp 2>/dev/null; then
+    # Copy new files
     cp -r /tmp/nebulacp/* /opt/nebulacp/
     rm -rf /tmp/nebulacp
     log_success "Source code cloned from GitHub"
     track_install "NebulaCP Source: latest from GitHub"
+    
+    if [ "$UPDATING" = true ]; then
+        log_success "Updated to latest version (backup available at $BACKUP_DIR)"
+    fi
 else
     log_warning "Could not clone from GitHub. Using local setup..."
     # Create minimal structure if clone fails
@@ -344,15 +367,24 @@ chown nebula:nebula /etc/nebula/.env
 chmod 600 /etc/nebula/.env
 log_success "Secure environment configured"
 
-# 13. Install Node.js dependencies
-step "Installing Node.js dependencies (this may take a few minutes)..."
+# 13. Install/Update Node.js dependencies
+step "Installing/Updating Node.js dependencies (this may take a few minutes)..."
 
 # Backend dependencies
 if [ -f "/opt/nebulacp/apps/backend/package.json" ]; then
     cd /opt/nebulacp/apps/backend
-    sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
-    log_success "Backend dependencies installed"
-    track_install "Backend: NestJS + dependencies"
+    
+    # Clean install for updates
+    if [ -d "node_modules" ]; then
+        log_info "Updating backend dependencies..."
+        sudo -u nebula npm update --silent 2>/dev/null || npm update --silent
+    else
+        log_info "Installing backend dependencies..."
+        sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
+    fi
+    
+    log_success "Backend dependencies installed/updated"
+    track_install "Backend: NestJS + dependencies (latest)"
     
     # Copy .env
     if [ ! -f ".env" ]; then
@@ -363,27 +395,45 @@ if [ -f "/opt/nebulacp/apps/backend/package.json" ]; then
     if [ -f "prisma/schema.prisma" ]; then
         sudo -u nebula npx prisma generate --silent 2>/dev/null || npx prisma generate --silent
         log_success "Prisma ORM client generated"
-        track_install "Database ORM: Prisma"
+        track_install "Database ORM: Prisma (latest)"
     fi
 fi
 
 # Frontend dependencies
 if [ -f "/opt/nebulacp/apps/frontend/package.json" ]; then
     cd /opt/nebulacp/apps/frontend
-    sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
-    log_success "Frontend dependencies installed"
-    track_install "Frontend: Next.js 15 + React 19"
+    
+    # Clean install for updates
+    if [ -d "node_modules" ]; then
+        log_info "Updating frontend dependencies..."
+        sudo -u nebula npm update --silent 2>/dev/null || npm update --silent
+    else
+        log_info "Installing frontend dependencies..."
+        sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
+    fi
+    
+    log_success "Frontend dependencies installed/updated"
+    track_install "Frontend: Next.js 15 + React 19 (latest)"
 fi
 
 # CLI dependencies
 if [ -f "/opt/nebulacp/apps/cli/package.json" ]; then
     cd /opt/nebulacp/apps/cli
-    sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
+    
+    # Clean install for updates
+    if [ -d "node_modules" ]; then
+        log_info "Updating CLI dependencies..."
+        sudo -u nebula npm update --silent 2>/dev/null || npm update --silent
+    else
+        log_info "Installing CLI dependencies..."
+        sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
+    fi
+    
     sudo -u nebula npm run build --silent 2>/dev/null || npm run build --silent
     # Link CLI globally
     npm link --silent 2>/dev/null || true
-    log_success "CLI dependencies installed"
-    track_install "CLI Tool: nebula-cli"
+    log_success "CLI dependencies installed/updated"
+    track_install "CLI Tool: nebula-cli (latest)"
 fi
 
 # 14. Build applications
@@ -411,52 +461,52 @@ if [ -d "/opt/nebulacp/install/systemd" ]; then
 fi
 
 systemctl daemon-reload
-log_success "Systemd services installed"
+log_success "Systemd services updated"
 
-# 16. Enable and start services
-step "Starting all services..."
+# 16. Restart services for updates
+step "Restarting all services with latest versions..."
 
 # Redis
 if [[ $OS == "debian" ]]; then
     systemctl enable redis-server 2>/dev/null
-    systemctl start redis-server 2>/dev/null
+    systemctl restart redis-server 2>/dev/null || systemctl start redis-server 2>/dev/null
     track_install "Service: Redis (cache/sessions)"
 else
     systemctl enable redis 2>/dev/null
-    systemctl start redis 2>/dev/null
+    systemctl restart redis 2>/dev/null || systemctl start redis 2>/dev/null
     track_install "Service: Redis (cache/sessions)"
 fi
 
 # Caddy
 systemctl enable caddy 2>/dev/null
-systemctl start caddy 2>/dev/null || true
-log_success "Caddy web server started"
+systemctl restart caddy 2>/dev/null || systemctl start caddy 2>/dev/null || true
+log_success "Caddy web server restarted"
 track_install "Service: Caddy (web server with auto-HTTPS)"
 
 # Nginx (for static files)
 systemctl enable nginx 2>/dev/null
-systemctl start nginx 2>/dev/null || true
+systemctl restart nginx 2>/dev/null || systemctl start nginx 2>/dev/null || true
 track_install "Service: Nginx (static files)"
 
 # Ollama (if installed)
 if command -v ollama &> /dev/null; then
     systemctl enable ollama 2>/dev/null || true
-    systemctl start ollama 2>/dev/null || true
-    log_success "Ollama AI service started"
+    systemctl restart ollama 2>/dev/null || systemctl start ollama 2>/dev/null || true
+    log_success "Ollama AI service restarted"
 fi
 
 # NebulaCP services
 if [ -f "/etc/systemd/system/nebula-backend.service" ]; then
     systemctl enable nebula-backend 2>/dev/null
-    systemctl start nebula-backend 2>/dev/null || true
-    log_success "NebulaCP Backend API started"
+    systemctl restart nebula-backend 2>/dev/null || systemctl start nebula-backend 2>/dev/null || true
+    log_success "NebulaCP Backend API restarted with latest version"
     track_install "Service: NebulaCP Backend (port 3000)"
 fi
 
 if [ -f "/etc/systemd/system/nebula-frontend.service" ]; then
     systemctl enable nebula-frontend 2>/dev/null
-    systemctl start nebula-frontend 2>/dev/null || true
-    log_success "NebulaCP Frontend started"
+    systemctl restart nebula-frontend 2>/dev/null || systemctl start nebula-frontend 2>/dev/null || true
+    log_success "NebulaCP Frontend restarted with latest version"
     track_install "Service: NebulaCP Frontend (port 3001)"
 fi
 

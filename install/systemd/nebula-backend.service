@@ -6,7 +6,7 @@ After=network.target postgresql.service redis.service
 Type=simple
 User=nebula
 Group=nebula
-WorkingDirectory=/usr/local/nebula/apps/backend
+WorkingDirectory=/opt/nebulacp/apps/backend
 EnvironmentFile=/etc/nebula/.env
 ExecStart=/usr/bin/node dist/main.js
 Restart=always
@@ -20,7 +20,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/log/nebula /usr/local/nebula
+ReadWritePaths=/var/log/nebula /opt/nebulacp
 
 [Install]
 WantedBy=multi-user.target
