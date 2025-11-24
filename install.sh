@@ -86,15 +86,6 @@ echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
-# Confirmation prompt
-read -p "$(echo -e ${YELLOW}Continue with installation? [y/N]:${NC} )" -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    log_error "Installation cancelled by user"
-    exit 1
-fi
-echo ""
-
 # Check if running as root
 if [[ $EUID -ne 0 ]]; then
    log_error "This script must be run as root"
@@ -171,11 +162,16 @@ log_success "Node.js 22 repository added"
 
 # PostgreSQL 17
 if [[ $OS == "debian" ]]; then
-    # Download and import PostgreSQL GPG key properly
-    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg 2>/dev/null
-    chmod 644 /usr/share/keyrings/postgresql-keyring.gpg
-    # Add repository with signed-by
-    sh -c 'echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+    # Install GPG if not present
+    apt-get install -y -qq gnupg2 2>/dev/null || true
+    # Import PostgreSQL GPG key using apt-key for compatibility
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - 2>/dev/null || (
+        # Fallback: manual keyring method
+        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg 2>/dev/null
+        chmod 644 /etc/apt/trusted.gpg.d/postgresql.gpg
+    )
+    # Add repository
+    sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 else
     dnf install -y -q https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm 2>/dev/null || true
     dnf config-manager --disable pgdg* 2>/dev/null || true
