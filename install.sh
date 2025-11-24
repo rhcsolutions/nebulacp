@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# NebulaCP Installer v0.9.0 – 100% Docker-Free
-# Supports: Debian 12/13 – Rocky Linux 9 – AlmaLinux 9
+# NebulaCP Installer v1.0.0 – 100% Docker-Free
+# Supports: Debian 12/13/14 – Rocky Linux 9/10 – AlmaLinux 9/10
 set -e
 
 # Colors for output
@@ -75,13 +75,18 @@ cat << "EOF"
 ╚═╝  ╚═══╝╚══════╝╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝╚═╝     
 EOF
 echo -e "${NC}"
-echo -e "${BOLD}Modern Control Panel - Docker-Free Edition v0.9.0${NC}"
+echo -e "${BOLD}Modern Control Panel - Docker-Free Edition v1.0.0${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 echo -e "${BOLD}System Information:${NC}"
-echo -e "  OS: ${GREEN}$(cat /etc/os-release | grep PRETTY_NAME | cut -d'\"' -f2)${NC}"
+echo -e "  OS: ${GREEN}$(cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)${NC}"
 echo -e "  Hostname: ${GREEN}$(hostname)${NC}"
 echo -e "  IP Address: ${GREEN}$(hostname -I | awk '{print $1}')${NC}"
+echo ""
+echo -e "${BOLD}Supported Systems:${NC}"
+echo -e "  • Debian 12 (Bookworm), 13 (Trixie), 14 (Forky)"
+echo -e "  • Rocky Linux 9, 10"
+echo -e "  • AlmaLinux 9, 10"
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
@@ -97,12 +102,20 @@ step "Detecting operating system..."
 if grep -q "ID=debian" /etc/os-release; then
     OS="debian"
     CODENAME=$(lsb_release -sc 2>/dev/null || echo "bookworm")
-    track_install "Operating System: Debian $(cat /etc/debian_version 2>/dev/null || echo '12+')"
-elif grep -q -E "ID=(rocky|almalinux)" /etc/os-release; then
+    VERSION_ID=$(grep VERSION_ID /etc/os-release | cut -d'"' -f2)
+    track_install "Operating System: Debian ${VERSION_ID} ($(cat /etc/debian_version 2>/dev/null || echo 'unknown'))"
+elif grep -q -E "ID=(rocky|almalinux|rhel)" /etc/os-release; then
     OS="rhel"
-    track_install "Operating System: $(grep PRETTY_NAME /etc/os-release | cut -d'\"' -f2)"
+    VERSION_ID=$(grep VERSION_ID /etc/os-release | cut -d'"' -f2 | cut -d'.' -f1)
+    DISTRO_NAME=$(grep PRETTY_NAME /etc/os-release | cut -d'"' -f2)
+    track_install "Operating System: ${DISTRO_NAME}"
+    
+    # Check if version is supported (9 or 10)
+    if [[ ! "$VERSION_ID" =~ ^(9|10)$ ]]; then
+        log_warning "Rocky/AlmaLinux version ${VERSION_ID} detected. Officially supported: 9, 10"
+    fi
 else
-    log_error "Unsupported OS. Only Debian 12/13 and Rocky/AlmaLinux 9 supported."
+    log_error "Unsupported OS. Only Debian 12/13/14 and Rocky/AlmaLinux 9/10 supported."
     exit 1
 fi
 
@@ -150,11 +163,20 @@ step "Adding official repositories (Node.js, PostgreSQL, Caddy)..."
 
 # NodeSource Node.js 22
 if [[ $OS == "debian" ]]; then
-    # Download and add NodeSource GPG key
-    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg 2>/dev/null
-    chmod 644 /usr/share/keyrings/nodesource.gpg
-    # Add repository with signed-by
-    echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+    # Ensure ca-certificates and gnupg are installed
+    apt-get install -y -qq ca-certificates gnupg2 2>/dev/null || true
+    
+    # Download NodeSource GPG key
+    wget --quiet -O /tmp/nodesource.asc https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    
+    # Add to trusted keys
+    gpg --dearmor < /tmp/nodesource.asc > /etc/apt/trusted.gpg.d/nodesource.gpg 2>/dev/null || 
+        cat /tmp/nodesource.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/nodesource.gpg
+    chmod 644 /etc/apt/trusted.gpg.d/nodesource.gpg
+    rm -f /tmp/nodesource.asc
+    
+    # Add repository
+    echo "deb https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
 else
     curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - > /dev/null 2>&1
 fi
@@ -162,20 +184,38 @@ log_success "Node.js 22 repository added"
 
 # PostgreSQL 17
 if [[ $OS == "debian" ]]; then
-    # Install GPG if not present
-    apt-get install -y -qq gnupg2 2>/dev/null || true
-    # Import PostgreSQL GPG key using apt-key for compatibility
-    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - 2>/dev/null || (
-        # Fallback: manual keyring method
-        wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg 2>/dev/null
-        chmod 644 /etc/apt/trusted.gpg.d/postgresql.gpg
-    )
-    # Add repository
+    # Ensure gnupg is installed for key handling
+    apt-get install -y -qq gnupg2 ca-certificates 2>/dev/null || true
+    
+    # Download the PostgreSQL key and add it to trusted keys
+    wget --quiet -O /tmp/postgresql.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    
+    # Try multiple methods to import the key (for compatibility across Debian versions)
+    if command -v apt-key &> /dev/null; then
+        cat /tmp/postgresql.asc | apt-key add - 2>/dev/null || true
+    fi
+    
+    # Always add to trusted.gpg.d for modern systems
+    gpg --dearmor < /tmp/postgresql.asc > /etc/apt/trusted.gpg.d/postgresql.gpg 2>/dev/null || 
+        cat /tmp/postgresql.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
+    chmod 644 /etc/apt/trusted.gpg.d/postgresql.gpg
+    rm -f /tmp/postgresql.asc
+    
+    # Add repository without signed-by (uses system keyring)
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 else
-    dnf install -y -q https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm 2>/dev/null || true
-    dnf config-manager --disable pgdg* 2>/dev/null || true
-    dnf config-manager --enable pgdg17 2>/dev/null || true
+    # Rocky/AlmaLinux - handle both version 9 and 10
+    if [[ "$VERSION_ID" == "10" ]]; then
+        # Rocky/AlmaLinux 10
+        dnf install -y -q https://download.postgresql.org/pub/repos/yum/reporpms/EL-10-x86_64/pgdg-redhat-repo-latest.noarch.rpm 2>/dev/null || true
+        dnf config-manager --disable pgdg* 2>/dev/null || true
+        dnf config-manager --enable pgdg17 2>/dev/null || true
+    else
+        # Rocky/AlmaLinux 9
+        dnf install -y -q https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm 2>/dev/null || true
+        dnf config-manager --disable pgdg* 2>/dev/null || true
+        dnf config-manager --enable pgdg17 2>/dev/null || true
+    fi
 fi
 log_success "PostgreSQL 17 repository added"
 
