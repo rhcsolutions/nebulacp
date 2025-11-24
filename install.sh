@@ -424,7 +424,7 @@ log_info "Installing Node.js dependencies for backend (NestJS)"
 if [ -f "$INSTALL_DIR/apps/backend/package.json" ]; then
     cd "$INSTALL_DIR/apps/backend"
     log_command "npm install in apps/backend"
-    npm install --production 2>&1 | tee -a "$LOG_FILE"
+    npm install --production --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE"
     log_success "Backend dependencies installed"
     log_to_file "Backend package count: $(ls node_modules 2>/dev/null | wc -l || echo '0')"
 else
@@ -437,7 +437,7 @@ log_info "Installing Node.js dependencies for frontend (Next.js)"
 if [ -f "$INSTALL_DIR/apps/frontend/package.json" ]; then
     cd "$INSTALL_DIR/apps/frontend"
     log_command "npm install in apps/frontend"
-    npm install --production 2>&1 | tee -a "$LOG_FILE"
+    npm install --production --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE"
     log_success "Frontend dependencies installed"
     log_to_file "Frontend package count: $(ls node_modules 2>/dev/null | wc -l || echo '0')"
 else
@@ -528,11 +528,11 @@ if [ -f "/opt/nebulacp/apps/backend/package.json" ]; then
     if [ -d "node_modules" ]; then
         log_info "Updating backend dependencies..."
         log_command "npm update in apps/backend"
-        sudo -u nebula npm update --silent 2>&1 | tee -a "$LOG_FILE" || npm update --silent 2>&1 | tee -a "$LOG_FILE"
+        sudo -u nebula npm update --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE" || npm update --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE"
     else
         log_info "Installing backend dependencies..."
         log_command "npm install in apps/backend"
-        sudo -u nebula npm install --silent 2>&1 | tee -a "$LOG_FILE" || npm install --silent 2>&1 | tee -a "$LOG_FILE"
+        sudo -u nebula npm install --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE" || npm install --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE"
     fi
     
     log_success "Backend dependencies installed/updated"
@@ -564,11 +564,11 @@ if [ -f "/opt/nebulacp/apps/frontend/package.json" ]; then
     if [ -d "node_modules" ]; then
         log_info "Updating frontend dependencies..."
         log_command "npm update in apps/frontend"
-        sudo -u nebula npm update --silent 2>&1 | tee -a "$LOG_FILE" || npm update --silent 2>&1 | tee -a "$LOG_FILE"
+        sudo -u nebula npm update --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE" || npm update --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE"
     else
         log_info "Installing frontend dependencies..."
         log_command "npm install in apps/frontend"
-        sudo -u nebula npm install --silent 2>&1 | tee -a "$LOG_FILE" || npm install --silent 2>&1 | tee -a "$LOG_FILE"
+        sudo -u nebula npm install --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE" || npm install --legacy-peer-deps 2>&1 | tee -a "$LOG_FILE"
     fi
     
     log_success "Frontend dependencies installed/updated"
@@ -583,10 +583,10 @@ if [ -f "/opt/nebulacp/apps/cli/package.json" ]; then
     # Clean install for updates
     if [ -d "node_modules" ]; then
         log_info "Updating CLI dependencies..."
-        sudo -u nebula npm update --silent 2>/dev/null || npm update --silent
+        sudo -u nebula npm update --legacy-peer-deps 2>/dev/null || npm update --legacy-peer-deps
     else
         log_info "Installing CLI dependencies..."
-        sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
+        sudo -u nebula npm install --legacy-peer-deps 2>/dev/null || npm install --legacy-peer-deps
     fi
     
     sudo -u nebula npm run build --silent 2>/dev/null || npm run build --silent
