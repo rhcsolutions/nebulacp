@@ -34,7 +34,7 @@ A spiritual successor to HestiaCP / Virtualmin but built from the ground up with
 ### One-Command Install
 
 ```bash
-curl -fsSL https://get.nebulacp.rhcsolutions.com | bash
+curl -fsSL https://raw.githubusercontent.com/rhcsolutions/nebulacp/main/install.sh | sudo bash
 ```
 
 ### Manual Installation
@@ -45,30 +45,21 @@ git clone https://github.com/rhcsolutions/nebulacp.git
 cd nebulacp
 ```
 
-2. Install dependencies:
+2. Run the installation script:
 ```bash
-cd apps/backend && npm install
-cd ../frontend && npm install
-cd ../cli && npm install
+sudo bash install.sh
 ```
 
-3. Set up environment:
-```bash
-cp apps/backend/.env.example apps/backend/.env
-# Edit .env with your settings
-```
+The installer will automatically:
+- Install Node.js 22, PostgreSQL 17, Redis, Caddy, Nginx
+- Set up the database and user accounts
+- Install all dependencies
+- Build the applications
+- Configure systemd services
+- Set up firewall rules
+- Generate secure credentials
 
-4. Run database migrations:
-```bash
-cd apps/backend
-npm run prisma:migrate
-```
-
-5. Build and start:
-```bash
-npm run build
-npm run start:prod
-```
+After installation, check `/root/nebulacp-credentials.txt` for access details.
 
 ## 🎯 Supported Operating Systems
 
