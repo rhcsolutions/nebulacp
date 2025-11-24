@@ -702,7 +702,7 @@ if [ -f "/etc/systemd/system/nebula-frontend.service" ]; then
     systemctl restart nebula-frontend 2>&1 | tee -a "$LOG_FILE" || systemctl start nebula-frontend 2>&1 | tee -a "$LOG_FILE" || true
     log_success "NebulaCP Frontend restarted with latest version"
     log_to_file "Frontend service status: $(systemctl is-active nebula-frontend 2>/dev/null || echo 'unknown')"
-    track_install "Service: NebulaCP Frontend (port 3001)"
+    track_install "Service: NebulaCP Frontend (port 443)"
 fi
 
 # 17. Configure firewall
@@ -713,28 +713,28 @@ if command -v ufw &> /dev/null; then
     ufw --force reset 2>&1 | tee -a "$LOG_FILE"
     ufw default deny incoming 2>&1 | tee -a "$LOG_FILE"
     ufw default allow outgoing 2>&1 | tee -a "$LOG_FILE"
-    log_info "Opening ports: 22 (SSH), 80 (HTTP), 443 (HTTPS), 3000 (Backend), 3001 (Frontend)"
+    log_info "Opening ports: 22 (SSH), 80 (HTTP), 443 (HTTPS), 3000 (Backend), 443 (Frontend)"
     ufw allow 22/tcp 2>&1 | tee -a "$LOG_FILE"
     ufw allow 80/tcp 2>&1 | tee -a "$LOG_FILE"
     ufw allow 443/tcp 2>&1 | tee -a "$LOG_FILE"
     ufw allow 3000/tcp 2>&1 | tee -a "$LOG_FILE"  # Backend API
-    ufw allow 3001/tcp 2>&1 | tee -a "$LOG_FILE"  # Frontend
+    ufw allow 443/tcp 2>&1 | tee -a "$LOG_FILE"  # Frontend
     ufw --force enable 2>&1 | tee -a "$LOG_FILE"
     log_success "UFW firewall configured"
     log_to_file "UFW status: $(ufw status 2>/dev/null | head -n1 || echo 'unknown')"
-    track_install "Firewall: UFW (ports 22, 80, 443, 3000, 3001)"
+    track_install "Firewall: UFW (ports 22, 80, 443, 3000, 443)"
 elif command -v firewall-cmd &> /dev/null; then
     log_command "Configure firewalld"
-    log_info "Opening ports: 22 (SSH), 80 (HTTP), 443 (HTTPS), 3000 (Backend), 3001 (Frontend)"
+    log_info "Opening ports: 22 (SSH), 80 (HTTP), 443 (HTTPS), 3000 (Backend), 443 (Frontend)"
     firewall-cmd --permanent --add-service=http 2>&1 | tee -a "$LOG_FILE"
     firewall-cmd --permanent --add-service=https 2>&1 | tee -a "$LOG_FILE"
     firewall-cmd --permanent --add-service=ssh 2>&1 | tee -a "$LOG_FILE"
     firewall-cmd --permanent --add-port=3000/tcp 2>&1 | tee -a "$LOG_FILE"
-    firewall-cmd --permanent --add-port=3001/tcp 2>&1 | tee -a "$LOG_FILE"
+    firewall-cmd --permanent --add-port=443/tcp 2>&1 | tee -a "$LOG_FILE"
     firewall-cmd --reload 2>&1 | tee -a "$LOG_FILE"
     log_success "Firewalld configured"
     log_to_file "Firewalld status: $(firewall-cmd --state 2>/dev/null || echo 'unknown')"
-    track_install "Firewall: firewalld (ports 22, 80, 443, 3000, 3001)"
+    track_install "Firewall: firewalld (ports 22, 80, 443, 3000, 443)"
 fi
 
 # 18. Configure Fail2Ban
@@ -769,9 +769,9 @@ Server Information:
   Installation Date: $(date '+%Y-%m-%d %H:%M:%S')
 
 Access Points:
-  🌐 Frontend Dashboard: http://$SERVER_IP:3001
-  🔌 Backend API: http://$SERVER_IP:3000
-  📊 Health Check: http://$SERVER_IP:3000/health
+  🌐 Frontend Dashboard: https://$SERVER_IP
+  🔌 Backend API: https://$SERVER_IP:3000
+  📊 Health Check: https://$SERVER_IP:3000/health
 
 Database:
   Type: PostgreSQL 17
@@ -790,7 +790,7 @@ Default Admin Account:
 Security:
   JWT Secret: $JWT_SECRET
   SSH: Hardened (key-based auth recommended)
-  Firewall: Active (ports 22, 80, 443, 3000, 3001)
+  Firewall: Active (ports 22, 80, 443, 3000, 443)
   Fail2Ban: Enabled
   
 Configuration Files:
@@ -816,7 +816,7 @@ Service Management:
     systemctl restart nebula-frontend
 
 Quick Start:
-  1. Open: http://$SERVER_IP:3001
+  1. Open: https://$SERVER_IP
   2. Login with admin credentials above
   3. Configure alerts in: /etc/nebula/.env
   4. Review documentation: /opt/nebulacp/docs/README.md
@@ -872,9 +872,9 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo -e "${BOLD}🌐 Access Information:${NC}"
 echo ""
-echo -e "  ${BOLD}Dashboard:${NC}      ${BLUE}http://$SERVER_IP:3001${NC}"
-echo -e "  ${BOLD}API:${NC}            ${BLUE}http://$SERVER_IP:3000${NC}"
-echo -e "  ${BOLD}Health Check:${NC}   ${BLUE}http://$SERVER_IP:3000/health${NC}"
+echo -e "  ${BOLD}Dashboard:${NC}      ${BLUE}https://$SERVER_IP${NC}"
+echo -e "  ${BOLD}API:${NC}            ${BLUE}https://$SERVER_IP:3000${NC}"
+echo -e "  ${BOLD}Health Check:${NC}   ${BLUE}https://$SERVER_IP:3000/health${NC}"
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
@@ -894,7 +894,7 @@ echo -e "  ${BOLD}1.${NC} Review full credentials:"
 echo -e "     ${CYAN}cat /root/nebulacp-credentials.txt${NC}"
 echo ""
 echo -e "  ${BOLD}2.${NC} Access the dashboard:"
-echo -e "     ${CYAN}http://$SERVER_IP:3001${NC}"
+echo -e "     ${CYAN}https://$SERVER_IP${NC}"
 echo ""
 echo -e "  ${BOLD}3.${NC} Configure alerts (optional):"
 echo -e "     ${CYAN}nano /etc/nebula/.env${NC}"
