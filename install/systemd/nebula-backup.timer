@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily NebulaCP Backup
+Requires=nebula-backup.service
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

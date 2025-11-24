@@ -1,0 +1,11 @@
+[Unit]
+Description=NebulaCP Backup Service
+
+[Service]
+Type=oneshot
+User=nebula
+WorkingDirectory=/usr/local/nebula
+ExecStart=/usr/local/nebula/scripts/backup.sh
+
+[Install]
+WantedBy=multi-user.target

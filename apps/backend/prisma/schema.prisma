@@ -1,0 +1,131 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id            String    @id @default(uuid())
+  username      String    @unique
+  email         String    @unique
+  passwordHash  String
+  role          Role      @default(USER)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  profile       Profile?
+  domains       Domain[]
+  backups       Backup[]
+  apiKeys       ApiKey[]
+  sessions      Session[]
+  mfa           Mfa?
+  aiUsage       AiUsage[]
+}
+
+model Profile {
+  id           String  @id @default(uuid())
+  accountId    String  @unique
+  fullName     String?
+  avatar       String?
+  language     String  @default("en")
+  timezone     String  @default("UTC")
+  account      Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+model Domain {
+  id           String   @id @default(uuid())
+  domain       String   @unique
+  userId       String
+  user         Account  @relation(fields: [userId], references: [id])
+  type         DomainType @default(WEB)
+  sslEnabled   Boolean  @default(true)
+  sslExpires   DateTime?
+  createdAt    DateTime @default(now())
+  path         String   // /home/username/web/domain.tld
+  phpVersion   String   @default("8.3")
+}
+
+model Backup {
+  id           String   @id @default(uuid())
+  userId       String
+  user         Account  @relation(fields: [userId], references: [id])
+  type         BackupType
+  destination  String   // rclone remote name
+  schedule     String   // cron expression
+  lastRun      DateTime?
+  status       BackupStatus @default(PENDING)
+  createdAt    DateTime @default(now())
+}
+
+model ApiKey {
+  id          String   @id @default(uuid())
+  userId      String
+  user        Account  @relation(fields: [userId], references: [id])
+  name        String
+  key         String   @unique
+  permissions String[] // e.g., ["domains:read", "backup:create"]
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  userId    String
+  user      Account  @relation(fields: [userId], references: [id])
+  token     String   @unique
+  ip        String
+  userAgent String?
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
+model Mfa {
+  id           String  @id @default(uuid())
+  userId       String  @unique
+  user         Account @relation(fields: [userId], references: [id], onDelete: Cascade)
+  secret       String
+  backupCodes  String[] // encrypted
+  enabled      Boolean @default(false)
+}
+
+model SystemLog {
+  id        String   @id @default(uuid())
+  level     LogLevel
+  message   String
+  context   String?
+  metadata  Json?
+  timestamp DateTime @default(now())
+}
+
+model AiUsage {
+  id        String   @id @default(uuid())
+  userId    String
+  user      Account  @relation(fields: [userId], references: [id])
+  type      AiType   // TEXT or IMAGE
+  model     String
+  prompt    String
+  cost      Decimal  @default(0)
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String?
+  title     String
+  message   String
+  type      NotificationType
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// Enums
+enum Role { ADMIN RESELLER USER }
+enum DomainType { WEB MAIL DNS PROXY }
+enum BackupType { FULL INCREMENTAL }
+enum BackupStatus { PENDING RUNNING SUCCESS FAILED }
+enum LogLevel { INFO WARN ERROR CRITICAL }
+enum AiType { TEXT IMAGE }
+enum NotificationType { SECURITY BACKUP SYSTEM BILLING }

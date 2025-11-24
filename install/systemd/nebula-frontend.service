@@ -1,0 +1,26 @@
+[Unit]
+Description=NebulaCP Frontend (Next.js)
+After=network.target
+
+[Service]
+Type=simple
+User=nebula
+Group=nebula
+WorkingDirectory=/usr/local/nebula/apps/frontend
+EnvironmentFile=/etc/nebula/.env
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=nebula-frontend
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/nebula
+
+[Install]
+WantedBy=multi-user.target

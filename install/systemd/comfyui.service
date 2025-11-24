@@ -1,0 +1,17 @@
+[Unit]
+Description=ComfyUI - Local AI Image Generation
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/comfyui
+ExecStart=/opt/comfyui/venv/bin/python main.py --listen 0.0.0.0 --port 8188
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=comfyui
+
+[Install]
+WantedBy=multi-user.target
