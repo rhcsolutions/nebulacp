@@ -1,0 +1,26 @@
+'Log files:
+/opt/nebulacp/.npm/_logs/2025-11-24T11_11_37_032Z-debug-0.log
+
+# npm resolution error report
+
+While resolving: @nebulacp/frontend@0.9.0
+Found: react@19.2.0
+node_modules/react
+  react@"^19.0.0" from @nebulacp/frontend@0.9.0
+  apps/frontend
+    @nebulacp/frontend@0.9.0
+    node_modules/@nebulacp/frontend
+      workspace apps/frontend from the root project
+
+Could not resolve dependency:
+peer react@"^16.5.1 || ^17.0.0 || ^18.0.0" from lucide-react@0.309.0
+node_modules/lucide-react
+  lucide-react@"^0.309.0" from @nebulacp/frontend@0.9.0
+  apps/frontend
+    @nebulacp/frontend@0.9.0
+    node_modules/@nebulacp/frontend
+      workspace apps/frontend from the root project
+
+Fix the upstream dependency conflict, or retry
+this command with --force or --legacy-peer-deps
+to accept an incorrect (and potentially broken) dependency resolution.
