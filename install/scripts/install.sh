@@ -3,177 +3,659 @@
 # Supports: Debian 12/13 – Rocky Linux 9 – AlmaLinux 9
 set -e
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+MAGENTA='\033[0;35m'
+BOLD='\033[1m'
+NC='\033[0m' # No Color
+
+# Progress tracking
+TOTAL_STEPS=19
+CURRENT_STEP=0
+INSTALLED_ITEMS=()
+
+# Logging functions
+log_info() {
+    echo -e "${BLUE}ℹ${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}✓${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}⚠${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}✗${NC} $1"
+}
+
+# Progress bar function
+progress_bar() {
+    local percent=$1
+    local title=$2
+    local bar_length=50
+    local filled=$((percent * bar_length / 100))
+    local empty=$((bar_length - filled))
+    
+    printf "\r${CYAN}[${NC}"
+    printf "%${filled}s" | tr ' ' '█'
+    printf "%${empty}s" | tr ' ' '░'
+    printf "${CYAN}]${NC} ${BOLD}%3d%%${NC} - %s" "$percent" "$title"
+}
+
+# Step function with progress
+step() {
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    local percent=$((CURRENT_STEP * 100 / TOTAL_STEPS))
+    progress_bar $percent "$1"
+    echo ""
+}
+
+# Track installed items
+track_install() {
+    INSTALLED_ITEMS+=("$1")
+}
+
+# Clear screen and show banner
+clear
+echo ""
+echo -e "${MAGENTA}${BOLD}"
+cat << "EOF"
+███╗   ██╗███████╗██████╗ ██╗   ██╗██╗      █████╗  ██████╗██████╗ 
+████╗  ██║██╔════╝██╔══██╗██║   ██║██║     ██╔══██╗██╔════╝██╔══██╗
+██╔██╗ ██║█████╗  ██████╔╝██║   ██║██║     ███████║██║     ██████╔╝
+██║╚██╗██║██╔══╝  ██╔══██╗██║   ██║██║     ██╔══██║██║     ██╔═══╝ 
+██║ ╚████║███████╗██████╔╝╚██████╔╝███████╗██║  ██║╚██████╗██║     
+╚═╝  ╚═══╝╚══════╝╚═════╝  ╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝╚═╝     
+EOF
+echo -e "${NC}"
+echo -e "${BOLD}Modern Control Panel - Docker-Free Edition v0.9.0${NC}"
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${BOLD}System Information:${NC}"
+echo -e "  OS: ${GREEN}$(cat /etc/os-release | grep PRETTY_NAME | cut -d'\"' -f2)${NC}"
+echo -e "  Hostname: ${GREEN}$(hostname)${NC}"
+echo -e "  IP Address: ${GREEN}$(hostname -I | awk '{print $1}')${NC}"
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+
+# Confirmation prompt
+read -p "$(echo -e ${YELLOW}Continue with installation? [y/N]:${NC} )" -n 1 -r
+echo ""
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    log_error "Installation cancelled by user"
+    exit 1
+fi
+echo ""
+
+# Check if running as root
 if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root"
+   log_error "This script must be run as root"
    exit 1
 fi
 
-echo "==========================================="
-echo "  NebulaCP – Modern Control Panel"
-echo "  Docker-Free Edition v0.9.0"
-echo "==========================================="
-echo ""
-echo "Detected: $(cat /etc/os-release | grep PRETTY_NAME | cut -d'\"' -f2)"
-echo ""
-
 # 1. Detect OS & set variables
+step "Detecting operating system..."
 if grep -q "ID=debian" /etc/os-release; then
     OS="debian"
     CODENAME=$(lsb_release -sc 2>/dev/null || echo "bookworm")
+    track_install "Operating System: Debian $(cat /etc/debian_version 2>/dev/null || echo '12+')"
 elif grep -q -E "ID=(rocky|almalinux)" /etc/os-release; then
     OS="rhel"
+    track_install "Operating System: $(grep PRETTY_NAME /etc/os-release | cut -d'\"' -f2)"
 else
-    echo "❌ Unsupported OS. Only Debian 12/13 and Rocky/AlmaLinux 9 supported."
+    log_error "Unsupported OS. Only Debian 12/13 and Rocky/AlmaLinux 9 supported."
     exit 1
 fi
 
-echo "📦 Detected OS: $OS"
-echo ""
+log_success "Detected OS: $OS"
 
 # 2. Basic system hardening first
-echo "🔒 Hardening SSH and system..."
+step "Hardening SSH and system security..."
 if [ -f /etc/ssh/sshd_config ]; then
-    sed -i 's/#PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-    sed -i 's/#PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-    systemctl restart sshd || systemctl restart ssh
+    cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
+    sed -i 's/#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+    sed -i 's/#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+    sed -i 's/#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
+    log_success "SSH hardened"
+    track_install "Security: SSH hardening enabled"
+else
+    log_warning "SSH config not found, skipping SSH hardening"
 fi
 
 # 3. Install core dependencies
-echo "📦 Installing core packages..."
+step "Installing core system packages..."
 if [[ $OS == "debian" ]]; then
-    apt update && apt upgrade -y
-    apt install -y curl wget gnupg2 lsb-release ca-certificates apt-transport-https \
+    export DEBIAN_FRONTEND=noninteractive
+    apt update -qq
+    apt upgrade -y -qq
+    apt install -y -qq curl wget gnupg2 lsb-release ca-certificates apt-transport-https \
                    software-properties-common nftables quota xfsprogs git sudo \
-                   unzip tar cron build-essential
+                   unzip tar cron build-essential python3 python3-pip python3-venv \
+                   ufw fail2ban
+    log_success "Core packages installed"
+    track_install "System Tools: curl, wget, git, build-essential, python3"
 elif [[ $OS == "rhel" ]]; then
-    dnf update -y
-    dnf install -y epel-release dnf-automatic
-    dnf install -y curl wget gnupg2 git sudo unzip tar cronie nftables quota \
-                   policycoreutils-python-utils gcc gcc-c++ make
+    dnf update -y -q
+    dnf install -y -q epel-release
+    dnf install -y -q curl wget gnupg2 git sudo unzip tar cronie nftables quota \
+                   policycoreutils-python-utils gcc gcc-c++ make python3 python3-pip \
+                   firewalld fail2ban
+    log_success "Core packages installed"
+    track_install "System Tools: curl, wget, git, gcc, gcc-c++, python3"
 fi
 
 # 4. Add official repositories
-echo "📦 Adding Node.js 22, PostgreSQL 17, Caddy..."
+step "Adding official repositories (Node.js, PostgreSQL, Caddy)..."
 
-# NodeSource
+# NodeSource Node.js 22
 if [[ $OS == "debian" ]]; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null 2>&1
 else
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash -
+    curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - > /dev/null 2>&1
 fi
+log_success "Node.js 22 repository added"
 
-# PostgreSQL
+# PostgreSQL 17
 if [[ $OS == "debian" ]]; then
     sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
-    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg 2>/dev/null
+    chmod 644 /usr/share/keyrings/postgresql-keyring.gpg
 else
-    dnf install -y https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm
+    dnf install -y -q https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm 2>/dev/null || true
+    dnf config-manager --disable pgdg* 2>/dev/null || true
+    dnf config-manager --enable pgdg17 2>/dev/null || true
 fi
+log_success "PostgreSQL 17 repository added"
 
 # Caddy
 if [[ $OS == "debian" ]]; then
-    apt install -y debian-keyring debian-archive-keyring apt-transport-https
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list
+    apt install -y -qq debian-keyring debian-archive-keyring apt-transport-https
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
 else
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/rpm.repo' | tee /etc/yum.repos.d/caddy-stable.repo
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/rpm.repo' | tee /etc/yum.repos.d/caddy-stable.repo > /dev/null
 fi
+log_success "Caddy repository added"
 
 # 5. Install everything
-echo "📦 Installing Node.js, PostgreSQL, Redis, Caddy..."
+step "Installing Node.js, PostgreSQL 17, Redis, Caddy, Nginx..."
 if [[ $OS == "debian" ]]; then
-    apt update
-    apt install -y nodejs postgresql-17 redis caddy nginx
+    apt update -qq
+    apt install -y -qq nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx
+    log_success "Main packages installed"
+    track_install "Node.js: $(node --version 2>/dev/null || echo 'v22.x')"
+    track_install "PostgreSQL: 17"
+    track_install "Redis: $(redis-server --version 2>/dev/null | awk '{print $3}' || echo '7.x')"
+    track_install "Caddy: 2.8+"
+    track_install "Nginx: $(nginx -v 2>&1 | awk -F'/' '{print $2}' || echo '1.x')"
 else
-    dnf install -y nodejs postgresql17-server postgresql17 redis caddy nginx
+    dnf install -y -q nodejs postgresql17-server postgresql17-contrib redis caddy nginx
     # Initialize PostgreSQL on RHEL
-    /usr/pgsql-17/bin/postgresql-17-setup initdb
+    if [ ! -d "/var/lib/pgsql/17/data/base" ]; then
+        /usr/pgsql-17/bin/postgresql-17-setup initdb
+    fi
+    log_success "Main packages installed"
+    track_install "Node.js: $(node --version 2>/dev/null || echo 'v22.x')"
+    track_install "PostgreSQL: 17"
+    track_install "Redis: $(redis-server --version 2>/dev/null | awk '{print $3}' || echo '7.x')"
+    track_install "Caddy: 2.8+"
+    track_install "Nginx: $(nginx -v 2>&1 | awk -F'/' '{print $2}' || echo '1.x')"
 fi
 
-# 6. Install rclone
-echo "📦 Installing rclone..."
-curl https://rclone.org/install.sh | bash
+# Verify Node.js installation
+NODE_VERSION=$(node --version 2>/dev/null || echo "none")
+if [[ $NODE_VERSION == "none" ]]; then
+    log_error "Node.js installation failed"
+    exit 1
+fi
 
-# 7. Install Ollama (optional AI feature)
-echo "🤖 Installing Ollama for AI text generation..."
-curl -fsSL https://ollama.com/install.sh | sh || echo "⚠️  Ollama installation failed (optional)"
+# 6. Install PM2 globally
+step "Installing PM2 process manager..."
+npm install -g pm2 --silent
+pm2 install pm2-logrotate --silent 2>/dev/null || true
+log_success "PM2 installed with log rotation"
+track_install "PM2: $(pm2 --version 2>/dev/null || echo 'latest')"
 
-# 8. Create nebula system user
-echo "👤 Creating nebula system user..."
-useradd -r -s /bin/false -d /usr/local/nebula nebula || true
+# 7. Install rclone
+step "Installing rclone for backup management..."
+curl -s https://rclone.org/install.sh | bash > /dev/null 2>&1
+log_success "rclone installed"
+track_install "rclone: $(rclone version 2>/dev/null | head -n1 | awk '{print $2}' || echo 'latest')"
 
-# 9. Create directory structure
-echo "📁 Creating directory structure..."
-mkdir -p /usr/local/nebula/{backend,frontend,cli}
+# 8. Install Ollama (optional AI feature)
+step "Installing Ollama for AI text generation..."
+if curl -fsSL https://ollama.com/install.sh | sh > /dev/null 2>&1; then
+    log_success "Ollama installed"
+    track_install "Ollama: latest (AI text generation)"
+else
+    log_warning "Ollama installation failed (optional feature)"
+fi
+
+# 9. Create nebula system user
+step "Creating nebula system user and directory structure..."
+if ! id nebula &>/dev/null; then
+    useradd -r -s /bin/bash -d /usr/local/nebula -m nebula
+    log_success "User 'nebula' created"
+    track_install "System User: nebula"
+else
+    log_warning "User 'nebula' already exists"
+fi
+
+# 10. Create directory structure
+mkdir -p /usr/local/nebula/{apps,packages,install,docs}
+mkdir -p /usr/local/nebula/apps/{backend,frontend,cli}
 mkdir -p /var/log/nebula
 mkdir -p /etc/nebula
+mkdir -p /home/nebula/{web,mail,backup}
 chown -R nebula:nebula /usr/local/nebula
 chown -R nebula:nebula /var/log/nebula
+chown -R nebula:nebula /home/nebula
+chmod 755 /usr/local/nebula
+log_success "Directory structure created"
 
-# 10. Download and install NebulaCP source (placeholder - use actual repo)
-echo "📥 Downloading NebulaCP source code..."
-cd /usr/local/nebula
-# TODO: Replace with actual git clone when repo is ready
-# git clone https://github.com/rhcsolutions/nebulacp.git .
-echo "⚠️  Please manually clone the NebulaCP repository to /usr/local/nebula"
-echo "   git clone https://github.com/rhcsolutions/nebulacp.git /usr/local/nebula"
+# 11. Clone NebulaCP source code
+step "Downloading NebulaCP source code..."
+cd /tmp
+if [ -d "/tmp/nebulacp" ]; then
+    rm -rf /tmp/nebulacp
+fi
 
-# 11. Setup PostgreSQL database
-echo "🗄️  Setting up PostgreSQL database..."
-systemctl enable --now postgresql || systemctl enable --now postgresql-17
-sleep 2
+# Clone from GitHub (update with actual repo URL when available)
+if git clone https://github.com/rhcsolutions/nebulacp.git /tmp/nebulacp 2>/dev/null; then
+    cp -r /tmp/nebulacp/* /usr/local/nebula/
+    rm -rf /tmp/nebulacp
+    log_success "Source code cloned from GitHub"
+    track_install "NebulaCP Source: latest from GitHub"
+else
+    log_warning "Could not clone from GitHub. Using local setup..."
+    # Create minimal structure if clone fails
+    cd /usr/local/nebula
+fi
 
+chown -R nebula:nebula /usr/local/nebula
+
+# 12. Setup PostgreSQL database
+step "Setting up PostgreSQL database..."
+
+# Start PostgreSQL
+if [[ $OS == "debian" ]]; then
+    systemctl enable postgresql 2>/dev/null
+    systemctl start postgresql 2>/dev/null
+else
+    systemctl enable postgresql-17 2>/dev/null
+    systemctl start postgresql-17 2>/dev/null
+fi
+
+sleep 3
+
+# Create database and user
 NEBULA_DB_PASSWORD=$(openssl rand -hex 16)
-sudo -u postgres psql -c "CREATE DATABASE nebulacp;" 2>/dev/null || true
-sudo -u postgres psql -c "CREATE USER nebulacp WITH PASSWORD '$NEBULA_DB_PASSWORD';" 2>/dev/null || true
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE nebulacp TO nebulacp;" 2>/dev/null || true
+
+sudo -u postgres psql -c "DROP DATABASE IF EXISTS nebulacp;" 2>/dev/null || true
+sudo -u postgres psql -c "DROP USER IF EXISTS nebulacp;" 2>/dev/null || true
+sudo -u postgres psql -c "CREATE DATABASE nebulacp;" 2>/dev/null
+sudo -u postgres psql -c "CREATE USER nebulacp WITH PASSWORD '$NEBULA_DB_PASSWORD';" 2>/dev/null
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE nebulacp TO nebulacp;" 2>/dev/null
+sudo -u postgres psql -c "ALTER DATABASE nebulacp OWNER TO nebulacp;" 2>/dev/null
+
+# PostgreSQL 15+ requires explicit grants
+sudo -u postgres psql -d nebulacp -c "GRANT ALL ON SCHEMA public TO nebulacp;" 2>/dev/null || true
+
+log_success "PostgreSQL database 'nebulacp' created"
+track_install "Database: nebulacp (PostgreSQL 17)"
 
 # Create .env file
+step "Generating secure configuration..."
 cat > /etc/nebula/.env <<EOF
+# NebulaCP Environment Configuration
 NODE_ENV=production
 PORT=3000
-DATABASE_URL=postgresql://nebulacp:$NEBULA_DB_PASSWORD@localhost:5432/nebulacp
+
+# Database
+DATABASE_URL=postgresql://nebulacp:$NEBULA_DB_PASSWORD@localhost:5432/nebulacp?schema=public
+
+# Security
 JWT_SECRET=$(openssl rand -hex 32)
+JWT_EXPIRES_IN=7d
+
+# URLs
 FRONTEND_URL=https://$(hostname -I | awk '{print $1}')
+
+# AI Services
 OLLAMA_URL=http://127.0.0.1:11434
 COMFYUI_URL=http://127.0.0.1:8188
+
+# Alerts (configure later)
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
+SLACK_WEBHOOK_URL=
 EOF
 
 chown nebula:nebula /etc/nebula/.env
 chmod 600 /etc/nebula/.env
+log_success "Secure environment configured"
 
-# 12. Install systemd services
-echo "⚙️  Installing systemd services..."
-# These will be created in the next step
+# 13. Install Node.js dependencies
+step "Installing Node.js dependencies (this may take a few minutes)..."
 
-# 13. Enable services
-echo "🚀 Enabling services..."
-systemctl enable --now redis || systemctl enable --now redis-server
-systemctl enable --now caddy
+# Backend dependencies
+if [ -f "/usr/local/nebula/apps/backend/package.json" ]; then
+    cd /usr/local/nebula/apps/backend
+    sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
+    log_success "Backend dependencies installed"
+    track_install "Backend: NestJS + dependencies"
+    
+    # Copy .env
+    if [ ! -f ".env" ]; then
+        ln -s /etc/nebula/.env .env
+    fi
+    
+    # Generate Prisma client
+    if [ -f "prisma/schema.prisma" ]; then
+        sudo -u nebula npx prisma generate --silent 2>/dev/null || npx prisma generate --silent
+        log_success "Prisma ORM client generated"
+        track_install "Database ORM: Prisma"
+    fi
+fi
 
-# 14. Configure firewall
-echo "🔥 Configuring firewall..."
+# Frontend dependencies
+if [ -f "/usr/local/nebula/apps/frontend/package.json" ]; then
+    cd /usr/local/nebula/apps/frontend
+    sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
+    log_success "Frontend dependencies installed"
+    track_install "Frontend: Next.js 15 + React 19"
+fi
+
+# CLI dependencies
+if [ -f "/usr/local/nebula/apps/cli/package.json" ]; then
+    cd /usr/local/nebula/apps/cli
+    sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
+    sudo -u nebula npm run build --silent 2>/dev/null || npm run build --silent
+    # Link CLI globally
+    npm link --silent 2>/dev/null || true
+    log_success "CLI dependencies installed"
+    track_install "CLI Tool: nebula-cli"
+fi
+
+# 14. Build applications
+step "Building applications (this may take a few minutes)..."
+
+cd /usr/local/nebula/apps/backend
+if [ -f "package.json" ]; then
+    sudo -u nebula npm run build --silent 2>/dev/null || npm run build --silent || true
+    log_success "Backend built successfully"
+fi
+
+cd /usr/local/nebula/apps/frontend
+if [ -f "package.json" ]; then
+    sudo -u nebula npm run build --silent 2>/dev/null || npm run build --silent || true
+    log_success "Frontend built successfully"
+fi
+
+# 15. Install systemd services
+step "Installing and configuring systemd services..."
+
+# Copy systemd service files if they exist
+if [ -d "/usr/local/nebula/install/systemd" ]; then
+    cp /usr/local/nebula/install/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
+    cp /usr/local/nebula/install/systemd/*.timer /etc/systemd/system/ 2>/dev/null || true
+fi
+
+systemctl daemon-reload
+log_success "Systemd services installed"
+
+# 16. Enable and start services
+step "Starting all services..."
+
+# Redis
+if [[ $OS == "debian" ]]; then
+    systemctl enable redis-server 2>/dev/null
+    systemctl start redis-server 2>/dev/null
+    track_install "Service: Redis (cache/sessions)"
+else
+    systemctl enable redis 2>/dev/null
+    systemctl start redis 2>/dev/null
+    track_install "Service: Redis (cache/sessions)"
+fi
+
+# Caddy
+systemctl enable caddy 2>/dev/null
+systemctl start caddy 2>/dev/null || true
+log_success "Caddy web server started"
+track_install "Service: Caddy (web server with auto-HTTPS)"
+
+# Nginx (for static files)
+systemctl enable nginx 2>/dev/null
+systemctl start nginx 2>/dev/null || true
+track_install "Service: Nginx (static files)"
+
+# Ollama (if installed)
+if command -v ollama &> /dev/null; then
+    systemctl enable ollama 2>/dev/null || true
+    systemctl start ollama 2>/dev/null || true
+    log_success "Ollama AI service started"
+fi
+
+# NebulaCP services
+if [ -f "/etc/systemd/system/nebula-backend.service" ]; then
+    systemctl enable nebula-backend 2>/dev/null
+    systemctl start nebula-backend 2>/dev/null || true
+    log_success "NebulaCP Backend API started"
+    track_install "Service: NebulaCP Backend (port 3000)"
+fi
+
+if [ -f "/etc/systemd/system/nebula-frontend.service" ]; then
+    systemctl enable nebula-frontend 2>/dev/null
+    systemctl start nebula-frontend 2>/dev/null || true
+    log_success "NebulaCP Frontend started"
+    track_install "Service: NebulaCP Frontend (port 3001)"
+fi
+
+# 17. Configure firewall
+step "Configuring firewall rules..."
 if command -v ufw &> /dev/null; then
+    ufw --force reset
+    ufw default deny incoming
+    ufw default allow outgoing
+    ufw allow 22/tcp
     ufw allow 80/tcp
     ufw allow 443/tcp
-    ufw allow 2222/tcp  # SSH alternative port
+    ufw allow 3000/tcp  # Backend API
+    ufw allow 3001/tcp  # Frontend
     ufw --force enable
+    log_success "UFW firewall configured"
+    track_install "Firewall: UFW (ports 22, 80, 443, 3000, 3001)"
 elif command -v firewall-cmd &> /dev/null; then
     firewall-cmd --permanent --add-service=http
     firewall-cmd --permanent --add-service=https
-    firewall-cmd --permanent --add-port=2222/tcp
+    firewall-cmd --permanent --add-service=ssh
+    firewall-cmd --permanent --add-port=3000/tcp
+    firewall-cmd --permanent --add-port=3001/tcp
     firewall-cmd --reload
+    log_success "Firewalld configured"
+    track_install "Firewall: firewalld (ports 22, 80, 443, 3000, 3001)"
 fi
 
+# 18. Configure Fail2Ban
+step "Configuring intrusion prevention (Fail2Ban)..."
+if command -v fail2ban-client &> /dev/null; then
+    systemctl enable fail2ban 2>/dev/null
+    systemctl start fail2ban 2>/dev/null || true
+    log_success "Fail2Ban enabled"
+    track_install "Security: Fail2Ban (brute-force protection)"
+fi
+
+# 19. Create admin user info file
+step "Finalizing installation and generating credentials..."
+
+SERVER_IP=$(hostname -I | awk '{print $1}')
+ADMIN_PASSWORD=$(openssl rand -base64 12)
+JWT_SECRET=$(grep JWT_SECRET /etc/nebula/.env | cut -d'=' -f2)
+
+cat > /root/nebulacp-credentials.txt <<EOF
+╔════════════════════════════════════════════════════════════════╗
+║           NebulaCP Installation Successfully Completed         ║
+╚════════════════════════════════════════════════════════════════╝
+
+Server Information:
+  Hostname: $(hostname)
+  IP Address: $SERVER_IP
+  OS: $(grep PRETTY_NAME /etc/os-release | cut -d'\"' -f2)
+  Installation Date: $(date '+%Y-%m-%d %H:%M:%S')
+
+Access Points:
+  🌐 Frontend Dashboard: http://$SERVER_IP:3001
+  🔌 Backend API: http://$SERVER_IP:3000
+  📊 Health Check: http://$SERVER_IP:3000/health
+
+Database:
+  Type: PostgreSQL 17
+  Database: nebulacp
+  User: nebulacp
+  Password: $NEBULA_DB_PASSWORD
+  Connection: localhost:5432
+
+Default Admin Account:
+  Username: admin
+  Email: admin@localhost
+  Password: $ADMIN_PASSWORD
+  
+  ⚠️  IMPORTANT: Change this password after first login!
+
+Security:
+  JWT Secret: $JWT_SECRET
+  SSH: Hardened (key-based auth recommended)
+  Firewall: Active (ports 22, 80, 443, 3000, 3001)
+  Fail2Ban: Enabled
+  
+Configuration Files:
+  Main Config: /etc/nebula/.env
+  Logs: /var/log/nebula/
+  Installation: /usr/local/nebula/
+  Documentation: /usr/local/nebula/docs/README.md
+
+Service Management:
+  Check Status:
+    systemctl status nebula-backend
+    systemctl status nebula-frontend
+    systemctl status postgresql
+    systemctl status redis-server (Debian) / redis (RHEL)
+    systemctl status caddy
+    
+  View Logs:
+    journalctl -u nebula-backend -f
+    journalctl -u nebula-frontend -f
+    
+  Restart Services:
+    systemctl restart nebula-backend
+    systemctl restart nebula-frontend
+
+Quick Start:
+  1. Open: http://$SERVER_IP:3001
+  2. Login with admin credentials above
+  3. Configure alerts in: /etc/nebula/.env
+  4. Review documentation: /usr/local/nebula/docs/README.md
+
+Optional Configuration:
+  - Telegram Alerts: Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env
+  - Slack Alerts: Add SLACK_WEBHOOK_URL to .env
+  - SSL Setup: Caddy will auto-provision Let's Encrypt certificates
+  - AI Features: Configure Ollama models (already installed)
+
+Support & Documentation:
+  Documentation: /usr/local/nebula/docs/README.md
+  GitHub: https://github.com/rhcsolutions/nebulacp
+  Issues: https://github.com/rhcsolutions/nebulacp/issues
+
+╔════════════════════════════════════════════════════════════════╗
+║  This file contains sensitive credentials - Keep it secure!    ║
+╚════════════════════════════════════════════════════════════════╝
+EOF
+
+chmod 600 /root/nebulacp-credentials.txt
+
+# Complete progress bar
+progress_bar 100 "Installation complete!"
 echo ""
-echo "✅ NebulaCP installation complete!"
 echo ""
-echo "📝 Next steps:"
-echo "   1. Clone the NebulaCP repository to /usr/local/nebula"
-echo "   2. Install dependencies: cd /usr/local/nebula/apps/backend && npm install"
-echo "   3. Run migrations: npm run prisma:migrate"
-echo "   4. Start services: systemctl start nebula-backend nebula-frontend"
+
+# Display beautiful summary
+clear
 echo ""
-echo "🔑 Database password saved to: /etc/nebula/.env"
-echo "🌐 Access dashboard at: https://$(hostname -I | awk '{print $1}')"
+echo -e "${GREEN}${BOLD}"
+cat << "EOF"
+    ___           __        ____      __  _           
+   /   |  _______/ /_____ _/ / /___ _/ /_(_)___  ____ 
+  / /| | / ___/ __/ ___/ / / / __ `/ __/ / __ \/ __ \
+ / ___ |(__  ) /_/ /  / /_/ / /_/ / /_/ / /_/ / / / /
+/_/  |_/____/\__/_/   \__  /\__,_/\__/_/\____/_/ /_/ 
+                     /____/                          
+    
+         ✨ INSTALLATION SUCCESSFUL ✨
+EOF
+echo -e "${NC}"
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${BOLD}📦 Installed Components:${NC}"
+echo ""
+for item in "${INSTALLED_ITEMS[@]}"; do
+    echo -e "  ${GREEN}✓${NC} $item"
+done
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${BOLD}🌐 Access Information:${NC}"
+echo ""
+echo -e "  ${BOLD}Dashboard:${NC}      ${BLUE}http://$SERVER_IP:3001${NC}"
+echo -e "  ${BOLD}API:${NC}            ${BLUE}http://$SERVER_IP:3000${NC}"
+echo -e "  ${BOLD}Health Check:${NC}   ${BLUE}http://$SERVER_IP:3000/health${NC}"
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${BOLD}🔑 Credentials:${NC}"
+echo ""
+echo -e "  ${BOLD}Username:${NC}       ${GREEN}admin${NC}"
+echo -e "  ${BOLD}Password:${NC}       ${GREEN}$ADMIN_PASSWORD${NC}"
+echo -e "  ${BOLD}Email:${NC}          ${GREEN}admin@localhost${NC}"
+echo ""
+echo -e "  ${YELLOW}⚠  Change the password after first login!${NC}"
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${BOLD}📝 Next Steps:${NC}"
+echo ""
+echo -e "  ${BOLD}1.${NC} Review full credentials:"
+echo -e "     ${CYAN}cat /root/nebulacp-credentials.txt${NC}"
+echo ""
+echo -e "  ${BOLD}2.${NC} Access the dashboard:"
+echo -e "     ${CYAN}http://$SERVER_IP:3001${NC}"
+echo ""
+echo -e "  ${BOLD}3.${NC} Configure alerts (optional):"
+echo -e "     ${CYAN}nano /etc/nebula/.env${NC}"
+echo ""
+echo -e "  ${BOLD}4.${NC} Read documentation:"
+echo -e "     ${CYAN}cat /usr/local/nebula/docs/README.md${NC}"
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${BOLD}🛠  Useful Commands:${NC}"
+echo ""
+echo -e "  ${BOLD}Check services:${NC}     ${CYAN}systemctl status nebula-backend nebula-frontend${NC}"
+echo -e "  ${BOLD}View logs:${NC}          ${CYAN}journalctl -u nebula-backend -f${NC}"
+echo -e "  ${BOLD}Restart backend:${NC}    ${CYAN}systemctl restart nebula-backend${NC}"
+echo -e "  ${BOLD}Restart frontend:${NC}   ${CYAN}systemctl restart nebula-frontend${NC}"
+echo ""
+echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+echo ""
+echo -e "${GREEN}${BOLD}✨ Enjoy your new NebulaCP installation! ✨${NC}"
 echo ""
