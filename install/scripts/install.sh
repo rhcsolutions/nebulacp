@@ -243,7 +243,7 @@ fi
 # 9. Create nebula system user
 step "Creating nebula system user and directory structure..."
 if ! id nebula &>/dev/null; then
-    useradd -r -s /bin/bash -d /usr/local/nebula -m nebula
+    useradd -r -s /bin/bash -d /opt/nebulacp -m nebula
     log_success "User 'nebula' created"
     track_install "System User: nebula"
 else
@@ -251,15 +251,15 @@ else
 fi
 
 # 10. Create directory structure
-mkdir -p /usr/local/nebula/{apps,packages,install,docs}
-mkdir -p /usr/local/nebula/apps/{backend,frontend,cli}
+mkdir -p /opt/nebulacp/{apps,packages,install,docs}
+mkdir -p /opt/nebulacp/apps/{backend,frontend,cli}
 mkdir -p /var/log/nebula
 mkdir -p /etc/nebula
 mkdir -p /home/nebula/{web,mail,backup}
-chown -R nebula:nebula /usr/local/nebula
+chown -R nebula:nebula /opt/nebulacp
 chown -R nebula:nebula /var/log/nebula
 chown -R nebula:nebula /home/nebula
-chmod 755 /usr/local/nebula
+chmod 755 /opt/nebulacp
 log_success "Directory structure created"
 
 # 11. Clone NebulaCP source code
@@ -271,17 +271,17 @@ fi
 
 # Clone from GitHub (update with actual repo URL when available)
 if git clone https://github.com/rhcsolutions/nebulacp.git /tmp/nebulacp 2>/dev/null; then
-    cp -r /tmp/nebulacp/* /usr/local/nebula/
+    cp -r /tmp/nebulacp/* /opt/nebulacp/
     rm -rf /tmp/nebulacp
     log_success "Source code cloned from GitHub"
     track_install "NebulaCP Source: latest from GitHub"
 else
     log_warning "Could not clone from GitHub. Using local setup..."
     # Create minimal structure if clone fails
-    cd /usr/local/nebula
+    cd /opt/nebulacp
 fi
 
-chown -R nebula:nebula /usr/local/nebula
+chown -R nebula:nebula /opt/nebulacp
 
 # 12. Setup PostgreSQL database
 step "Setting up PostgreSQL database..."
@@ -348,8 +348,8 @@ log_success "Secure environment configured"
 step "Installing Node.js dependencies (this may take a few minutes)..."
 
 # Backend dependencies
-if [ -f "/usr/local/nebula/apps/backend/package.json" ]; then
-    cd /usr/local/nebula/apps/backend
+if [ -f "/opt/nebulacp/apps/backend/package.json" ]; then
+    cd /opt/nebulacp/apps/backend
     sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
     log_success "Backend dependencies installed"
     track_install "Backend: NestJS + dependencies"
@@ -368,16 +368,16 @@ if [ -f "/usr/local/nebula/apps/backend/package.json" ]; then
 fi
 
 # Frontend dependencies
-if [ -f "/usr/local/nebula/apps/frontend/package.json" ]; then
-    cd /usr/local/nebula/apps/frontend
+if [ -f "/opt/nebulacp/apps/frontend/package.json" ]; then
+    cd /opt/nebulacp/apps/frontend
     sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
     log_success "Frontend dependencies installed"
     track_install "Frontend: Next.js 15 + React 19"
 fi
 
 # CLI dependencies
-if [ -f "/usr/local/nebula/apps/cli/package.json" ]; then
-    cd /usr/local/nebula/apps/cli
+if [ -f "/opt/nebulacp/apps/cli/package.json" ]; then
+    cd /opt/nebulacp/apps/cli
     sudo -u nebula npm install --silent 2>/dev/null || npm install --silent
     sudo -u nebula npm run build --silent 2>/dev/null || npm run build --silent
     # Link CLI globally
@@ -389,13 +389,13 @@ fi
 # 14. Build applications
 step "Building applications (this may take a few minutes)..."
 
-cd /usr/local/nebula/apps/backend
+cd /opt/nebulacp/apps/backend
 if [ -f "package.json" ]; then
     sudo -u nebula npm run build --silent 2>/dev/null || npm run build --silent || true
     log_success "Backend built successfully"
 fi
 
-cd /usr/local/nebula/apps/frontend
+cd /opt/nebulacp/apps/frontend
 if [ -f "package.json" ]; then
     sudo -u nebula npm run build --silent 2>/dev/null || npm run build --silent || true
     log_success "Frontend built successfully"
@@ -405,9 +405,9 @@ fi
 step "Installing and configuring systemd services..."
 
 # Copy systemd service files if they exist
-if [ -d "/usr/local/nebula/install/systemd" ]; then
-    cp /usr/local/nebula/install/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
-    cp /usr/local/nebula/install/systemd/*.timer /etc/systemd/system/ 2>/dev/null || true
+if [ -d "/opt/nebulacp/install/systemd" ]; then
+    cp /opt/nebulacp/install/systemd/*.service /etc/systemd/system/ 2>/dev/null || true
+    cp /opt/nebulacp/install/systemd/*.timer /etc/systemd/system/ 2>/dev/null || true
 fi
 
 systemctl daemon-reload
@@ -540,8 +540,8 @@ Security:
 Configuration Files:
   Main Config: /etc/nebula/.env
   Logs: /var/log/nebula/
-  Installation: /usr/local/nebula/
-  Documentation: /usr/local/nebula/docs/README.md
+  Installation: /opt/nebulacp/
+  Documentation: /opt/nebulacp/docs/README.md
 
 Service Management:
   Check Status:
@@ -563,7 +563,7 @@ Quick Start:
   1. Open: http://$SERVER_IP:3001
   2. Login with admin credentials above
   3. Configure alerts in: /etc/nebula/.env
-  4. Review documentation: /usr/local/nebula/docs/README.md
+  4. Review documentation: /opt/nebulacp/docs/README.md
 
 Optional Configuration:
   - Telegram Alerts: Add TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID to .env
@@ -572,7 +572,7 @@ Optional Configuration:
   - AI Features: Configure Ollama models (already installed)
 
 Support & Documentation:
-  Documentation: /usr/local/nebula/docs/README.md
+  Documentation: /opt/nebulacp/docs/README.md
   GitHub: https://github.com/rhcsolutions/nebulacp
   Issues: https://github.com/rhcsolutions/nebulacp/issues
 
@@ -644,7 +644,7 @@ echo -e "  ${BOLD}3.${NC} Configure alerts (optional):"
 echo -e "     ${CYAN}nano /etc/nebula/.env${NC}"
 echo ""
 echo -e "  ${BOLD}4.${NC} Read documentation:"
-echo -e "     ${CYAN}cat /usr/local/nebula/docs/README.md${NC}"
+echo -e "     ${CYAN}cat /opt/nebulacp/docs/README.md${NC}"
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
