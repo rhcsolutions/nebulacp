@@ -166,12 +166,12 @@ log_success "Detected OS: $OS"
 step "Hardening SSH and system security..."
 if [ -f /etc/ssh/sshd_config ]; then
     cp /etc/ssh/sshd_config /etc/ssh/sshd_config.backup
-    sed -i 's/#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+    # sed -i 's/#\?PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
     sed -i 's/#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
     sed -i 's/#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
     systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
-    log_success "SSH hardened"
-    track_install "Security: SSH hardening enabled"
+    log_success "SSH configured"
+    track_install "Security: SSH configuration updated"
 else
     log_warning "SSH config not found, skipping SSH hardening"
 fi
