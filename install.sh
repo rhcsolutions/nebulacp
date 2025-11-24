@@ -3,6 +3,11 @@
 # Supports: Debian 12/13/14 – Rocky Linux 9/10 – AlmaLinux 9/10
 set -e
 
+# Non-interactive mode for all package managers
+export DEBIAN_FRONTEND=noninteractive
+export NEEDRESTART_MODE=a
+export NEEDRESTART_SUSPEND=1
+
 # Setup logging
 LOG_FILE="/var/log/nebulacp-install-$(date +%Y%m%d-%H%M%S).log"
 mkdir -p /var/log 2>/dev/null || true
@@ -175,13 +180,12 @@ fi
 step "Updating system and installing core packages..."
 log_info "Running system update and installing essential packages"
 if [[ $OS == "debian" ]]; then
-    export DEBIAN_FRONTEND=noninteractive
     log_command "apt update"
     apt update -qq 2>&1 | tee -a "$LOG_FILE"
     log_command "apt upgrade -y"
-    apt upgrade -y -qq 2>&1 | tee -a "$LOG_FILE"
+    apt upgrade -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -qq 2>&1 | tee -a "$LOG_FILE"
     log_command "apt install core packages"
-    apt install -y -qq curl wget gnupg2 lsb-release ca-certificates apt-transport-https \
+    apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -qq curl wget gnupg2 lsb-release ca-certificates apt-transport-https \
                    nftables quota xfsprogs git sudo \
                    unzip tar cron build-essential python3 python3-pip python3-venv \
                    ufw fail2ban 2>&1 | tee -a "$LOG_FILE"
@@ -231,7 +235,7 @@ log_info "Adding PostgreSQL 17 repository..."
 if [[ $OS == "debian" ]]; then
     # Install postgresql-common first to get the official setup script
     log_command "apt install postgresql-common"
-    apt install -y -qq postgresql-common 2>&1 | tee -a "$LOG_FILE"
+    apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -qq postgresql-common 2>&1 | tee -a "$LOG_FILE"
     
     # Use the official PostgreSQL setup script which handles Debian version compatibility
     log_info "Running official PostgreSQL repository setup script"
@@ -259,8 +263,8 @@ log_success "PostgreSQL 17 repository added"
 
 # Caddy
 if [[ $OS == "debian" ]]; then
-    apt install -y -qq debian-keyring debian-archive-keyring apt-transport-https
-    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null
+    apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -qq debian-keyring debian-archive-keyring apt-transport-https
+    curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | gpg --dearmor --yes -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg 2>/dev/null
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | tee /etc/apt/sources.list.d/caddy-stable.list > /dev/null
 else
     curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/rpm.repo' | tee /etc/yum.repos.d/caddy-stable.repo > /dev/null
@@ -275,8 +279,8 @@ if [[ $OS == "debian" ]]; then
     
     # Try upgrade first, then install
     log_command "apt install/upgrade packages"
-    apt install -y --only-upgrade nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx 2>&1 | tee -a "$LOG_FILE" || true
-    apt install -y nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx 2>&1 | tee -a "$LOG_FILE"
+    apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" --only-upgrade nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx 2>&1 | tee -a "$LOG_FILE" || true
+    apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx 2>&1 | tee -a "$LOG_FILE"
     
     log_success "Main packages installed/updated to latest versions"
     track_install "Node.js: $(node --version 2>/dev/null || echo 'v22.x')"
@@ -311,7 +315,7 @@ if [[ $NODE_VERSION == "none" ]]; then
     
     if [[ $OS == "debian" ]]; then
         log_command "Manual apt install nodejs"
-        apt install -y nodejs 2>&1 | tee -a "$LOG_FILE"
+        apt install -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" nodejs 2>&1 | tee -a "$LOG_FILE"
     else
         log_command "Manual dnf install nodejs"
         dnf install -y nodejs 2>&1 | tee -a "$LOG_FILE"
@@ -337,7 +341,8 @@ track_install "PM2: $(pm2 --version 2>/dev/null || echo 'latest')"
 
 # 7. Install/Update rclone
 step "Installing/Updating rclone for backup management..."
-curl -s https://rclone.org/install.sh | bash > /dev/null 2>&1
+curl -s https://rclone.org/install.sh | bash -s -- --yes 2>&1 | tee -a "$LOG_FILE" > /dev/null || \
+curl -s https://rclone.org/install.sh | bash 2>&1 | tee -a "$LOG_FILE" > /dev/null
 log_success "rclone installed"
 log_success "rclone updated to latest version"
 track_install "rclone: $(rclone version 2>/dev/null | head -n1 | awk '{print $2}' || echo 'latest')"
