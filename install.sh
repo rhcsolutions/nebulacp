@@ -270,9 +270,14 @@ log_success "Caddy repository added"
 # 5. Install/Update everything
 step "Installing/Updating Node.js, PostgreSQL 17, Redis, Caddy, Nginx..."
 if [[ $OS == "debian" ]]; then
-    apt update -qq
-    apt install -y -qq --only-upgrade nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx 2>/dev/null || \
-    apt install -y -qq nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx
+    log_command "apt update before package installation"
+    apt update -qq 2>&1 | tee -a "$LOG_FILE"
+    
+    # Try upgrade first, then install
+    log_command "apt install/upgrade packages"
+    apt install -y --only-upgrade nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx 2>&1 | tee -a "$LOG_FILE" || true
+    apt install -y nodejs postgresql-17 postgresql-contrib-17 redis-server caddy nginx 2>&1 | tee -a "$LOG_FILE"
+    
     log_success "Main packages installed/updated to latest versions"
     track_install "Node.js: $(node --version 2>/dev/null || echo 'v22.x')"
     track_install "PostgreSQL: 17"
@@ -280,10 +285,14 @@ if [[ $OS == "debian" ]]; then
     track_install "Caddy: $(caddy version 2>/dev/null | head -n1 | awk '{print $1}' || echo '2.8+')"
     track_install "Nginx: $(nginx -v 2>&1 | awk -F'/' '{print $2}' || echo '1.x')"
 else
-    dnf upgrade -y -q nodejs postgresql17-server postgresql17-contrib redis caddy nginx 2>/dev/null || \
-    dnf install -y -q nodejs postgresql17-server postgresql17-contrib redis caddy nginx
+    log_command "dnf upgrade packages"
+    dnf upgrade -y -q nodejs postgresql17-server postgresql17-contrib redis caddy nginx 2>&1 | tee -a "$LOG_FILE" || true
+    log_command "dnf install packages"
+    dnf install -y -q nodejs postgresql17-server postgresql17-contrib redis caddy nginx 2>&1 | tee -a "$LOG_FILE"
+    
     # Initialize PostgreSQL on RHEL
     if [ ! -d "/var/lib/pgsql/17/data/base" ]; then
+        log_info "Initializing PostgreSQL database"
         /usr/pgsql-17/bin/postgresql-17-setup initdb
     fi
     log_success "Main packages installed/updated to latest versions"
@@ -298,7 +307,24 @@ fi
 NODE_VERSION=$(node --version 2>/dev/null || echo "none")
 if [[ $NODE_VERSION == "none" ]]; then
     log_error "Node.js installation failed"
-    exit 1
+    log_info "Attempting manual Node.js installation..."
+    
+    if [[ $OS == "debian" ]]; then
+        log_command "Manual apt install nodejs"
+        apt install -y nodejs 2>&1 | tee -a "$LOG_FILE"
+    else
+        log_command "Manual dnf install nodejs"
+        dnf install -y nodejs 2>&1 | tee -a "$LOG_FILE"
+    fi
+    
+    # Re-verify
+    NODE_VERSION=$(node --version 2>/dev/null || echo "none")
+    if [[ $NODE_VERSION == "none" ]]; then
+        log_error "Node.js installation failed after retry"
+        exit 1
+    else
+        log_success "Node.js successfully installed: $NODE_VERSION"
+    fi
 fi
 
 # 6. Install/Update PM2 globally
