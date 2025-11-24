@@ -356,25 +356,14 @@ else
     log_warning "Ollama installation failed (optional feature)"
 fi
 
-# 9. Install backend dependencies
-step "Installing backend dependencies..."
-log_info "Installing Node.js dependencies for backend (NestJS)"
-cd "$INSTALL_DIR/apps/backend"
-log_command "npm install in apps/backend"
-npm install --production 2>&1 | tee -a "$LOG_FILE"
-log_success "Backend dependencies installed"
-log_to_file "Backend package count: $(ls node_modules 2>/dev/null | wc -l || echo '0')"
+# 9. Ensure we're in the correct directory
+INSTALL_DIR="/opt/nebulacp"
+if [ ! -d "$INSTALL_DIR" ]; then
+    log_info "Creating installation directory: $INSTALL_DIR"
+    mkdir -p "$INSTALL_DIR"
+fi
 
-# 10. Install frontend dependencies
-step "Installing frontend dependencies..."
-log_info "Installing Node.js dependencies for frontend (Next.js)"
-cd "$INSTALL_DIR/apps/frontend"
-log_command "npm install in apps/frontend"
-npm install --production 2>&1 | tee -a "$LOG_FILE"
-log_success "Frontend dependencies installed"
-log_to_file "Frontend package count: $(ls node_modules 2>/dev/null | wc -l || echo '0')"
-
-# 11. Clone NebulaCP source code
+# 10. Clone/Update NebulaCP source code
 step "Downloading latest NebulaCP source code..."
 cd /tmp
 if [ -d "/tmp/nebulacp" ]; then
@@ -408,13 +397,39 @@ if git clone https://github.com/rhcsolutions/nebulacp.git /tmp/nebulacp 2>/dev/n
     fi
 else
     log_warning "Could not clone from GitHub. Using local setup..."
-    # Create minimal structure if clone fails
+    # Assume we're already in the source directory
     cd /opt/nebulacp
 fi
 
 chown -R nebula:nebula /opt/nebulacp
 
-# 12. Setup PostgreSQL database
+# 11. Install backend dependencies
+step "Installing backend dependencies..."
+log_info "Installing Node.js dependencies for backend (NestJS)"
+if [ -f "$INSTALL_DIR/apps/backend/package.json" ]; then
+    cd "$INSTALL_DIR/apps/backend"
+    log_command "npm install in apps/backend"
+    npm install --production 2>&1 | tee -a "$LOG_FILE"
+    log_success "Backend dependencies installed"
+    log_to_file "Backend package count: $(ls node_modules 2>/dev/null | wc -l || echo '0')"
+else
+    log_warning "Backend package.json not found, skipping backend dependencies"
+fi
+
+# 12. Install frontend dependencies
+step "Installing frontend dependencies..."
+log_info "Installing Node.js dependencies for frontend (Next.js)"
+if [ -f "$INSTALL_DIR/apps/frontend/package.json" ]; then
+    cd "$INSTALL_DIR/apps/frontend"
+    log_command "npm install in apps/frontend"
+    npm install --production 2>&1 | tee -a "$LOG_FILE"
+    log_success "Frontend dependencies installed"
+    log_to_file "Frontend package count: $(ls node_modules 2>/dev/null | wc -l || echo '0')"
+else
+    log_warning "Frontend package.json not found, skipping frontend dependencies"
+fi
+
+# 13. Setup PostgreSQL database
 step "Setting up PostgreSQL database..."
 log_info "Starting PostgreSQL service"
 
