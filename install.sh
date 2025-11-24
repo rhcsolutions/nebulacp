@@ -159,7 +159,11 @@ step "Adding official repositories (Node.js, PostgreSQL, Caddy)..."
 
 # NodeSource Node.js 22
 if [[ $OS == "debian" ]]; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - > /dev/null 2>&1
+    # Download and add NodeSource GPG key
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource.gpg 2>/dev/null
+    chmod 644 /usr/share/keyrings/nodesource.gpg
+    # Add repository with signed-by
+    echo "deb [signed-by=/usr/share/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
 else
     curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - > /dev/null 2>&1
 fi
@@ -167,9 +171,11 @@ log_success "Node.js 22 repository added"
 
 # PostgreSQL 17
 if [[ $OS == "debian" ]]; then
-    sh -c 'echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+    # Download and import PostgreSQL GPG key properly
     wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg 2>/dev/null
     chmod 644 /usr/share/keyrings/postgresql-keyring.gpg
+    # Add repository with signed-by
+    sh -c 'echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
 else
     dnf install -y -q https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm 2>/dev/null || true
     dnf config-manager --disable pgdg* 2>/dev/null || true
