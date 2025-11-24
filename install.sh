@@ -401,7 +401,22 @@ else
     cd /opt/nebulacp
 fi
 
+# Ensure service user and needed directories exist before setting ownership
+step "Ensuring 'nebula' service user and directories exist..."
+if ! id -u nebula >/dev/null 2>&1; then
+    log_info "Creating system group and user 'nebula'"
+    getent group nebula >/dev/null || groupadd --system nebula 2>/dev/null || true
+    NOLOGIN_SHELL="$(command -v nologin 2>/dev/null || echo /usr/sbin/nologin)"
+    useradd --system --home-dir /opt/nebulacp --shell "$NOLOGIN_SHELL" --gid nebula nebula 2>/dev/null || true
+    log_success "System user 'nebula' created (shell: $NOLOGIN_SHELL)"
+else
+    log_info "System user 'nebula' already exists"
+fi
+
+mkdir -p /etc/nebula /var/log/nebula 2>/dev/null || true
+
 chown -R nebula:nebula /opt/nebulacp
+chown -R nebula:nebula /etc/nebula /var/log/nebula 2>/dev/null || true
 
 # 11. Install backend dependencies
 step "Installing backend dependencies..."
