@@ -161,22 +161,20 @@ fi
 # 4. Add official repositories
 step "Adding official repositories (Node.js, PostgreSQL, Caddy)..."
 
+# Ensure gnupg and ca-certificates are installed first
+if [[ $OS == "debian" ]]; then
+    apt-get update -qq 2>/dev/null || true
+    apt-get install -y -qq ca-certificates gnupg2 wget curl 2>/dev/null || true
+fi
+
 # NodeSource Node.js 22
 if [[ $OS == "debian" ]]; then
-    # Ensure ca-certificates and gnupg are installed
-    apt-get install -y -qq ca-certificates gnupg2 2>/dev/null || true
-    
     # Download NodeSource GPG key
-    wget --quiet -O /tmp/nodesource.asc https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key
+    curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /usr/share/keyrings/nodesource-archive-keyring.gpg 2>/dev/null
+    chmod 644 /usr/share/keyrings/nodesource-archive-keyring.gpg
     
-    # Add to trusted keys
-    gpg --dearmor < /tmp/nodesource.asc > /etc/apt/trusted.gpg.d/nodesource.gpg 2>/dev/null || 
-        cat /tmp/nodesource.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/nodesource.gpg
-    chmod 644 /etc/apt/trusted.gpg.d/nodesource.gpg
-    rm -f /tmp/nodesource.asc
-    
-    # Add repository
-    echo "deb https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
+    # Add repository with signed-by directive
+    echo "deb [signed-by=/usr/share/keyrings/nodesource-archive-keyring.gpg] https://deb.nodesource.com/node_22.x nodistro main" > /etc/apt/sources.list.d/nodesource.list
 else
     curl -fsSL https://rpm.nodesource.com/setup_22.x | bash - > /dev/null 2>&1
 fi
@@ -184,25 +182,15 @@ log_success "Node.js 22 repository added"
 
 # PostgreSQL 17
 if [[ $OS == "debian" ]]; then
-    # Ensure gnupg is installed for key handling
-    apt-get install -y -qq gnupg2 ca-certificates 2>/dev/null || true
+    # Download the PostgreSQL key and add it to keyrings
+    curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg 2>/dev/null
+    chmod 644 /usr/share/keyrings/postgresql-archive-keyring.gpg
     
-    # Download the PostgreSQL key and add it to trusted keys
-    wget --quiet -O /tmp/postgresql.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    # Add repository with signed-by directive pointing to the keyring
+    sh -c 'echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
     
-    # Try multiple methods to import the key (for compatibility across Debian versions)
-    if command -v apt-key &> /dev/null; then
-        cat /tmp/postgresql.asc | apt-key add - 2>/dev/null || true
-    fi
-    
-    # Always add to trusted.gpg.d for modern systems
-    gpg --dearmor < /tmp/postgresql.asc > /etc/apt/trusted.gpg.d/postgresql.gpg 2>/dev/null || 
-        cat /tmp/postgresql.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/postgresql.gpg
-    chmod 644 /etc/apt/trusted.gpg.d/postgresql.gpg
-    rm -f /tmp/postgresql.asc
-    
-    # Add repository without signed-by (uses system keyring)
-    sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list'
+    # Force apt to update package cache with new keys
+    apt-get update -qq 2>/dev/null || true
 else
     # Rocky/AlmaLinux - handle both version 9 and 10
     if [[ "$VERSION_ID" == "10" ]]; then
